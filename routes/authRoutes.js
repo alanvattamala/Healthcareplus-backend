@@ -11,6 +11,8 @@ import {
   forgotPassword,
   verifyOTP,
   resetPassword,
+  sendEmailVerificationOTP,
+  verifyEmailVerificationOTP,
 } from '../controllers/authController.js';
 import { googleAuth, googleAuthConfig } from '../controllers/googleAuthController.js';
 import { validateRegistration, validateLogin, validateForgotPassword, validateOTP, validatePasswordReset } from '../middleware/validation.js';
@@ -26,6 +28,10 @@ router.post('/logout', logout);
 router.post('/forgot-password', validateForgotPassword, forgotPassword);
 router.post('/verify-otp', validateOTP, verifyOTP);
 router.post('/reset-password', validatePasswordReset, resetPassword);
+
+// Email verification routes (public)
+router.post('/send-otp', sendEmailVerificationOTP);
+router.post('/verify-email-otp', verifyEmailVerificationOTP);
 
 // Google OAuth routes (public)
 router.post('/google', googleAuth);

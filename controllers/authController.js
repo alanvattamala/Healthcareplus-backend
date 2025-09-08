@@ -38,6 +38,12 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 export const register = catchAsync(async (req, res, next) => {
+  console.log('🔥 Registration endpoint called with data:', {
+    email: req.body.email,
+    userType: req.body.userType,
+    emailVerified: req.body.emailVerified
+  });
+  
   const {
     firstName,
     lastName,
@@ -46,6 +52,7 @@ export const register = catchAsync(async (req, res, next) => {
     confirmPassword,
     phone,
     userType,
+    emailVerified, // New field to check if email was verified
     // Patient fields
     dateOfBirth,
     gender,
@@ -61,12 +68,14 @@ export const register = catchAsync(async (req, res, next) => {
 
   // Check if passwords match
   if (password !== confirmPassword) {
+    console.log('❌ Registration failed: Passwords do not match');
     return next(new AppError('Passwords do not match', 400));
   }
 
   // Check if user already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
+    console.log('❌ Registration failed: User already exists');
     return next(new AppError('User with this email already exists', 400));
   }
 
@@ -74,6 +83,7 @@ export const register = catchAsync(async (req, res, next) => {
   if (userType === 'doctor' && medicalLicenseNumber) {
     const existingDoctor = await User.findOne({ medicalLicenseNumber });
     if (existingDoctor) {
+      console.log('❌ Registration failed: Medical license already exists');
       return next(new AppError('Doctor with this license number already exists', 400));
     }
   }
@@ -85,7 +95,8 @@ export const register = catchAsync(async (req, res, next) => {
     email,
     password,
     phone,
-    userType
+    userType,
+    isEmailVerified: emailVerified || false // Set email verification status
   };
 
   // Add user-type specific fields
@@ -105,8 +116,20 @@ export const register = catchAsync(async (req, res, next) => {
     userData.verificationStatus = 'pending';
   }
 
+  console.log('✅ Creating user with data:', { 
+    email: userData.email, 
+    userType: userData.userType,
+    isEmailVerified: userData.isEmailVerified 
+  });
+
   // Create new user
   const newUser = await User.create(userData);
+  
+  console.log('✅ User created successfully:', { 
+    id: newUser._id, 
+    email: newUser.email,
+    userType: newUser.userType 
+  });
 
   // Send response with token
   createSendToken(newUser, 201, res);
@@ -190,6 +213,21 @@ export const protect = catchAsync(async (req, res, next) => {
     return next(
       new AppError('You are not logged in! Please log in to get access.', 401)
     );
+  }
+
+  // Handle demo tokens for development
+  if (token === 'demo-admin-token-123') {
+    // Create a demo admin user object
+    req.user = {
+      _id: 'demo-admin-id',
+      firstName: 'Admin',
+      lastName: 'User',
+      email: 'admin@healthcareplus.com',
+      userType: 'admin',
+      isActive: true,
+      role: 'admin'
+    };
+    return next();
   }
 
   // 2) Verification token
@@ -431,3 +469,110 @@ const filterObj = (obj, ...allowedFields) => {
   });
   return newObj;
 };
+
+// Send email verification OTP
+export const sendEmailVerificationOTP = catchAsync(async (req, res, next) => {
+  const { email } = req.body;
+  
+  console.log('📧 OTP send request for email:', email);
+
+  if (!email) {
+    console.log('❌ No email provided');
+    return next(new AppError('Email is required', 400));
+  }
+
+  // Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    console.log('❌ User already exists:', email);
+    return next(new AppError('User with this email already exists', 400));
+  }
+
+  // Create a temporary user document to store OTP (without saving to DB)
+  const tempUser = new User({ email, firstName: 'User' });
+  const otp = tempUser.createEmailVerificationOTP();
+  
+  console.log('🔑 Generated OTP for email:', email, '- OTP:', otp);
+
+  // Store the OTP temporarily in memory or cache
+  // For simplicity, we'll use a temporary document that we don't save
+  // In production, you might want to use Redis or similar
+  global.emailVerificationOTPs = global.emailVerificationOTPs || {};
+  global.emailVerificationOTPs[email] = {
+    hashedOTP: tempUser.emailVerificationOTP,
+    expires: tempUser.emailVerificationOTPExpires,
+    createdAt: Date.now()
+  };
+  
+  console.log('💾 Stored OTP data for email:', email, {
+    hashedOTP: tempUser.emailVerificationOTP.substring(0, 10) + '...',
+    expires: new Date(tempUser.emailVerificationOTPExpires),
+  });
+
+  try {
+    await emailService.sendEmailVerificationOTP(email, otp, 'User');
+    console.log('✅ Email verification OTP sent successfully to:', email);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Email verification OTP sent successfully',
+    });
+  } catch (err) {
+    // Clean up stored OTP if email fails
+    delete global.emailVerificationOTPs[email];
+    
+    console.error('❌ Error sending email verification OTP:', err);
+    return next(new AppError('There was an error sending the email verification OTP. Please try again later.', 500));
+  }
+});
+
+// Verify email verification OTP
+export const verifyEmailVerificationOTP = catchAsync(async (req, res, next) => {
+  const { email, otp } = req.body;
+  
+  console.log('🔍 OTP verification request:', { email, otp: otp ? '***' : 'missing' });
+
+  if (!email || !otp) {
+    console.log('❌ Missing email or OTP');
+    return next(new AppError('Email and OTP are required', 400));
+  }
+
+  // Check if OTP exists in temporary storage
+  const storedOTPData = global.emailVerificationOTPs?.[email];
+  console.log('📦 Stored OTP data exists:', !!storedOTPData);
+  
+  if (!storedOTPData) {
+    console.log('❌ No OTP found for email:', email);
+    return next(new AppError('No OTP found for this email. Please request a new OTP.', 400));
+  }
+
+  // Check if OTP has expired
+  if (storedOTPData.expires < Date.now()) {
+    console.log('❌ OTP expired for email:', email);
+    delete global.emailVerificationOTPs[email];
+    return next(new AppError('OTP has expired. Please request a new OTP.', 400));
+  }
+
+  // Verify OTP
+  const hashedCandidateOTP = crypto.createHash('sha256').update(otp).digest('hex');
+  
+  console.log('🔐 OTP verification:', {
+    candidateHash: hashedCandidateOTP.substring(0, 10) + '...',
+    storedHash: storedOTPData.hashedOTP.substring(0, 10) + '...',
+    matches: hashedCandidateOTP === storedOTPData.hashedOTP
+  });
+  
+  if (hashedCandidateOTP !== storedOTPData.hashedOTP) {
+    console.log('❌ Invalid OTP for email:', email);
+    return next(new AppError('Invalid OTP. Please try again.', 400));
+  }
+
+  // OTP is valid, clean up
+  delete global.emailVerificationOTPs[email];
+  console.log('✅ OTP verified successfully for email:', email);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Email verified successfully',
+  });
+});

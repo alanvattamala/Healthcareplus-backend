@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
   firstName: {
@@ -183,7 +184,11 @@ const userSchema = new mongoose.Schema({
   passwordResetExpires: Date,
   // OTP fields for forgot password
   passwordResetOTP: String,
-  passwordResetOTPExpires: Date
+  passwordResetOTPExpires: Date,
+  
+  // OTP fields for email verification
+  emailVerificationOTP: String,
+  emailVerificationOTPExpires: Date
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -309,6 +314,43 @@ userSchema.statics.unlockExpiredAccounts = function() {
       $unset: { lockUntil: 1, loginAttempts: 1 } 
     }
   );
+};
+
+// Instance method to generate email verification OTP
+userSchema.methods.createEmailVerificationOTP = function() {
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // Hash the OTP and set it to the field
+  this.emailVerificationOTP = crypto.createHash('sha256').update(otp).digest('hex');
+  
+  // Set expiration time to 10 minutes from now
+  this.emailVerificationOTPExpires = Date.now() + 10 * 60 * 1000;
+  
+  return otp;
+};
+
+// Instance method to verify email verification OTP
+userSchema.methods.verifyEmailVerificationOTP = function(candidateOTP) {
+  if (!candidateOTP || !this.emailVerificationOTP || !this.emailVerificationOTPExpires) {
+    return false;
+  }
+  
+  // Check if OTP has expired
+  if (this.emailVerificationOTPExpires < Date.now()) {
+    return false;
+  }
+  
+  // Hash the candidate OTP and compare with stored hashed OTP
+  const hashedCandidateOTP = crypto.createHash('sha256').update(candidateOTP).digest('hex');
+  
+  return hashedCandidateOTP === this.emailVerificationOTP;
+};
+
+// Instance method to clear email verification OTP
+userSchema.methods.clearEmailVerificationOTP = function() {
+  this.emailVerificationOTP = undefined;
+  this.emailVerificationOTPExpires = undefined;
 };
 
 const User = mongoose.model('User', userSchema);

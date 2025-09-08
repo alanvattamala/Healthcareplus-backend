@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import globalErrorHandler from './middleware/errorHandler.js';
 import AppError from './utils/appError.js';
 
@@ -75,6 +76,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
