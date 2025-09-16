@@ -5,6 +5,7 @@ import {
   getAllUsers,
   getDashboardStats,
   updateUserStatus,
+  updateUser,
   deleteUser
 } from '../controllers/adminController.js';
 import { protect, restrictTo } from '../controllers/authController.js';
@@ -21,6 +22,7 @@ router.patch('/verify-doctor/:doctorId', verifyDoctor);
 
 // User management routes
 router.get('/users', getAllUsers);
+router.put('/users/:userId', updateUser);
 router.patch('/users/:userId/status', updateUserStatus);
 router.delete('/users/:userId', deleteUser);
 

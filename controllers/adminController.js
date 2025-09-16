@@ -59,12 +59,23 @@ export const verifyDoctor = catchAsync(async (req, res, next) => {
 
 // Get all users (for admin dashboard)
 export const getAllUsers = catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 10, userType, verificationStatus } = req.query;
+  const { page = 1, limit = 10, userType, verificationStatus, active, search } = req.query;
 
   // Build filter object
   const filter = {};
   if (userType) filter.userType = userType;
   if (verificationStatus) filter.verificationStatus = verificationStatus;
+  if (active !== undefined) filter.isActive = active === 'true';
+
+  // Add search functionality
+  if (search) {
+    filter.$or = [
+      { firstName: { $regex: search, $options: 'i' } },
+      { lastName: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } },
+      { specialization: { $regex: search, $options: 'i' } }
+    ];
+  }
 
   const users = await User.find(filter)
     .select('-password')
@@ -134,6 +145,78 @@ export const updateUserStatus = catchAsync(async (req, res, next) => {
     message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
     data: {
       user
+    }
+  });
+});
+
+// Update user information
+export const updateUser = catchAsync(async (req, res, next) => {
+  const { userId } = req.params;
+  const { 
+    firstName, 
+    lastName, 
+    email, 
+    phone,
+    userType, 
+    specialization, 
+    medicalLicenseNumber,
+    experience,
+    consultationFee,
+    bloodGroup,
+    gender,
+    dateOfBirth,
+    knownAllergies,
+    isActive,
+    verificationStatus
+  } = req.body;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    return next(new AppError('User not found', 404));
+  }
+
+  // Update user fields
+  if (firstName !== undefined) user.firstName = firstName;
+  if (lastName !== undefined) user.lastName = lastName;
+  if (email !== undefined) user.email = email;
+  if (phone !== undefined) user.phone = phone;
+  if (userType !== undefined) user.userType = userType;
+  if (specialization !== undefined) user.specialization = specialization;
+  if (medicalLicenseNumber !== undefined) user.medicalLicenseNumber = medicalLicenseNumber;
+  if (experience !== undefined) user.experience = experience;
+  if (consultationFee !== undefined) user.consultationFee = consultationFee;
+  if (bloodGroup !== undefined) user.bloodGroup = bloodGroup;
+  if (gender !== undefined) user.gender = gender;
+  if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth;
+  if (knownAllergies !== undefined) user.knownAllergies = knownAllergies;
+  if (isActive !== undefined) user.isActive = isActive;
+  if (verificationStatus !== undefined) user.verificationStatus = verificationStatus;
+
+  await user.save();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'User updated successfully',
+    data: {
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        userType: user.userType,
+        specialization: user.specialization,
+        medicalLicenseNumber: user.medicalLicenseNumber,
+        experience: user.experience,
+        consultationFee: user.consultationFee,
+        bloodGroup: user.bloodGroup,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth,
+        knownAllergies: user.knownAllergies,
+        isActive: user.isActive,
+        verificationStatus: user.verificationStatus,
+        isEmailVerified: user.isEmailVerified
+      }
     }
   });
 });
