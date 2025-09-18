@@ -576,3 +576,29 @@ export const verifyEmailVerificationOTP = catchAsync(async (req, res, next) => {
     message: 'Email verified successfully',
   });
 });
+
+// Check if email is available for registration
+export const checkEmailAvailability = catchAsync(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new AppError('Email is required', 400));
+  }
+
+  // Check if user already exists with this email
+  const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+  if (existingUser) {
+    return res.status(200).json({
+      status: 'success',
+      available: false,
+      message: 'Email is already registered'
+    });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    available: true,
+    message: 'Email is available'
+  });
+});

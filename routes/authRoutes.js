@@ -13,6 +13,7 @@ import {
   resetPassword,
   sendEmailVerificationOTP,
   verifyEmailVerificationOTP,
+  checkEmailAvailability,
 } from '../controllers/authController.js';
 import { googleAuth, googleAuthConfig } from '../controllers/googleAuthController.js';
 import { validateRegistration, validateLogin, validateForgotPassword, validateOTP, validatePasswordReset } from '../middleware/validation.js';
@@ -23,6 +24,9 @@ const router = express.Router();
 router.post('/register', validateRegistration, register);
 router.post('/login', validateLogin, login);
 router.post('/logout', logout);
+
+// Email availability check (public)
+router.post('/check-email', checkEmailAvailability);
 
 // Forgot password routes (public)
 router.post('/forgot-password', validateForgotPassword, forgotPassword);

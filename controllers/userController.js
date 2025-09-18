@@ -262,3 +262,100 @@ export const getPatientStats = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+// Doctor availability management
+export const updateDoctorAvailability = catchAsync(async (req, res, next) => {
+  const { availability } = req.body;
+  
+  if (!availability) {
+    return next(new AppError('Availability data is required', 400));
+  }
+
+  const doctor = await User.findByIdAndUpdate(
+    req.user.id,
+    { 
+      availability: {
+        ...availability,
+        lastUpdated: new Date()
+      }
+    },
+    { new: true, runValidators: true }
+  ).select('-password');
+
+  if (!doctor) {
+    return next(new AppError('Doctor not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Availability updated successfully',
+    data: {
+      doctor,
+    },
+  });
+});
+
+export const getDoctorAvailability = catchAsync(async (req, res, next) => {
+  const doctor = await User.findById(req.params.doctorId || req.user.id);
+  
+  if (!doctor) {
+    return next(new AppError('Doctor not found', 404));
+  }
+
+  // Get today's date in YYYY-MM-DD format
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Initialize default daily availability if not set or if it's a new day
+  let availability = doctor.availability || {};
+  
+  if (!availability.dailySchedule || availability.dailySchedule.date !== today) {
+    availability = {
+      isAvailable: availability.isAvailable !== undefined ? availability.isAvailable : true,
+      dailySchedule: {
+        date: today,
+        isActive: true,
+        startTime: '09:00',
+        endTime: '17:00'
+      },
+      breakTime: availability.breakTime || { enabled: true, startTime: '12:00', endTime: '13:00' },
+      specialNotes: availability.specialNotes || ''
+    };
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      availability
+    },
+  });
+});
+
+export const getAvailableDoctors = catchAsync(async (req, res, next) => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  const doctors = await User.find({
+    userType: 'doctor',
+    isActive: true,
+    'availability.isAvailable': true,
+    $or: [
+      // Doctor has daily schedule for today and it's active
+      {
+        'availability.dailySchedule.date': today,
+        'availability.dailySchedule.isActive': true
+      },
+      // Doctor doesn't have today's schedule but isAvailable is true (fallback)
+      {
+        'availability.dailySchedule.date': { $ne: today },
+        'availability.isAvailable': true
+      }
+    ]
+  }).select('-password');
+
+  res.status(200).json({
+    status: 'success',
+    results: doctors.length,
+    data: {
+      doctors,
+    },
+  });
+});

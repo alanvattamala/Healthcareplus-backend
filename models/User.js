@@ -136,13 +136,41 @@ const userSchema = new mongoose.Schema({
     current: Boolean
   }],
   availability: {
-    monday: { available: Boolean, slots: [String] },
-    tuesday: { available: Boolean, slots: [String] },
-    wednesday: { available: Boolean, slots: [String] },
-    thursday: { available: Boolean, slots: [String] },
-    friday: { available: Boolean, slots: [String] },
-    saturday: { available: Boolean, slots: [String] },
-    sunday: { available: Boolean, slots: [String] }
+    isAvailable: {
+      type: Boolean,
+      default: true
+    },
+    dailySchedule: {
+      date: {
+        type: String,
+        default: () => new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+      },
+      isActive: {
+        type: Boolean,
+        default: true
+      },
+      startTime: {
+        type: String,
+        default: '09:00'
+      },
+      endTime: {
+        type: String,
+        default: '17:00'
+      }
+    },
+    breakTime: {
+      enabled: { type: Boolean, default: true },
+      startTime: { type: String, default: '12:00' },
+      endTime: { type: String, default: '13:00' }
+    },
+    specialNotes: {
+      type: String,
+      default: ''
+    },
+    lastUpdated: {
+      type: Date,
+      default: Date.now
+    }
   },
   verificationStatus: {
     type: String,
