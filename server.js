@@ -9,6 +9,7 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import approvalRoutes from './routes/approvalRoutes.js';
 import globalErrorHandler from './middleware/errorHandler.js';
 import AppError from './utils/appError.js';
 
@@ -77,6 +78,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/approvals', approvalRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {

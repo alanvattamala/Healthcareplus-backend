@@ -359,3 +359,26 @@ export const getAvailableDoctors = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+// Get doctor's consultation fee
+export const getDoctorConsultationFee = catchAsync(async (req, res, next) => {
+  const doctorId = req.user.id;
+
+  // Find the doctor user
+  const doctor = await User.findById(doctorId).select('consultationFee userType');
+  
+  if (!doctor) {
+    return next(new AppError('Doctor not found', 404));
+  }
+
+  if (doctor.userType !== 'doctor') {
+    return next(new AppError('Access denied. Only doctors can access this endpoint', 403));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      consultationFee: doctor.consultationFee || 0
+    },
+  });
+});
