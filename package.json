@@ -11,7 +11,8 @@
     "create-super-admin": "node scripts/createSuperAdmin.js",
     "create-admin": "node scripts/createCustomAdmin.js",
     "generate-admin-doc": "node scripts/generateAdminDocument.js",
-    "check-admin": "node scripts/checkAndFixAdmin.js"
+    "check-admin": "node scripts/checkAndFixAdmin.js",
+    "clear-approvals": "node scripts/clearApprovals.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -10,8 +10,10 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import approvalRoutes from './routes/approvalRoutes.js';
+import scheduleRoutes from './routes/scheduleRoutes.js';
 import globalErrorHandler from './middleware/errorHandler.js';
 import AppError from './utils/appError.js';
+import { startPeriodicCleanup } from './utils/approvalCleanup.js';
 
 // Load environment variables
 dotenv.config();
@@ -79,6 +81,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/approvals', approvalRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
@@ -108,6 +111,10 @@ const startServer = async () => {
     console.log(`🌐 Server URL: http://localhost:${PORT}`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
     console.log(`📚 API base URL: http://localhost:${PORT}/api`);
+    
+    // Start automatic cleanup of processed approval records
+    console.log('🧹 Starting automatic approval cleanup service...');
+    startPeriodicCleanup(10, 5); // Check every 10 minutes, delete records older than 5 minutes
   });
 
   // Handle unhandled promise rejections

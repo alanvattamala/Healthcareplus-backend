@@ -1,6 +1,7 @@
 import Approval from '../models/Approval.js';
 import User from '../models/User.js';
 import catchAsync from '../utils/catchAsync.js';
+import { scheduleApprovalDeletion, cleanupOldProcessedApprovals } from '../utils/approvalCleanup.js';
 
 // Submit a new approval request
 const submitApprovalRequest = catchAsync(async (req, res) => {
@@ -161,6 +162,10 @@ const processApprovalRequest = catchAsync(async (req, res) => {
   console.log('Populating admin details...');
   await approval.populate('admin', 'firstName lastName email');
 
+  // Schedule automatic deletion of the processed approval record after 2 minutes
+  console.log('Scheduling automatic deletion of processed approval...');
+  scheduleApprovalDeletion(approval._id.toString(), 2);
+
   console.log('Sending success response');
   res.status(200).json({
     success: true,
@@ -227,10 +232,50 @@ const getApprovalStatistics = catchAsync(async (req, res) => {
   });
 });
 
+// Clear all approval requests (admin only)
+const clearAllApprovals = catchAsync(async (req, res) => {
+  console.log('=== Clearing All Approvals ===');
+  console.log('Admin user:', req.user?.id);
+  
+  // Delete all approval requests
+  const result = await Approval.deleteMany({});
+  
+  console.log(`Deleted ${result.deletedCount} approval requests`);
+  
+  res.status(200).json({
+    success: true,
+    message: `Successfully cleared ${result.deletedCount} approval requests from the database`,
+    data: {
+      deletedCount: result.deletedCount
+    }
+  });
+});
+
+// Cleanup old processed approval requests (admin only)
+const cleanupProcessedApprovals = catchAsync(async (req, res) => {
+  console.log('=== Manual Cleanup of Processed Approvals ===');
+  console.log('Admin user:', req.user?.id);
+  
+  const { olderThanMinutes = 2 } = req.query;
+  
+  const deletedCount = await cleanupOldProcessedApprovals(parseInt(olderThanMinutes));
+  
+  res.status(200).json({
+    success: true,
+    message: `Successfully cleaned up ${deletedCount} processed approval requests older than ${olderThanMinutes} minutes`,
+    data: {
+      deletedCount,
+      olderThanMinutes: parseInt(olderThanMinutes)
+    }
+  });
+});
+
 export {
   submitApprovalRequest,
   getAllApprovalRequests,
   processApprovalRequest,
   getDoctorApprovalRequests,
-  getApprovalStatistics
+  getApprovalStatistics,
+  clearAllApprovals,
+  cleanupProcessedApprovals
 };

@@ -4,7 +4,9 @@ import {
   getAllApprovalRequests,
   processApprovalRequest,
   getDoctorApprovalRequests,
-  getApprovalStatistics
+  getApprovalStatistics,
+  clearAllApprovals,
+  cleanupProcessedApprovals
 } from '../controllers/approvalController.js';
 import { protect, restrictTo } from '../controllers/authController.js';
 
@@ -23,5 +25,7 @@ router.get('/my-requests', restrictTo('doctor'), getDoctorApprovalRequests);
 router.get('/all', restrictTo('admin'), getAllApprovalRequests); // Get all approval requests (admin only)
 router.patch('/:id/process', restrictTo('admin'), processApprovalRequest); // Process approval request (admin only)
 router.get('/statistics', restrictTo('admin'), getApprovalStatistics); // Get approval statistics (admin only)
+router.delete('/clear-all', restrictTo('admin'), clearAllApprovals); // Clear all approval requests (admin only)
+router.delete('/cleanup-processed', restrictTo('admin'), cleanupProcessedApprovals); // Cleanup old processed approvals (admin only)
 
 export default router;
