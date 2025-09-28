@@ -14,6 +14,7 @@ import {
   getDoctorAvailability,
   getAvailableDoctors,
   getAvailableDoctorsByDailySchedule,
+  getAvailableDoctorsForDate,
   getDoctorConsultationFee,
   createSampleSchedules,
   createSampleDoctors,
@@ -31,6 +32,7 @@ router.use(protect);
 // Doctor availability routes (accessible by doctors and patients)
 router.get('/doctors/available', getAvailableDoctors);
 router.get('/doctors/available-daily', getAvailableDoctorsByDailySchedule); // New daily-based endpoint
+router.get('/doctors/available-for-date', getAvailableDoctorsForDate); // Get doctors for specific date
 router.get('/doctors/:doctorId/availability', getDoctorAvailability);
 
 // Development/Testing routes

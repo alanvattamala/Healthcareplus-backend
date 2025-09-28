@@ -3,6 +3,12 @@ import Schedule from '../models/Schedule.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 
+// Helper function to parse date string to UTC date without timezone conversion
+const parseLocalDate = (dateString) => {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
 export const getAllUsers = catchAsync(async (req, res, next) => {
   const users = await User.find({ isActive: true }).select('-password');
   
@@ -930,6 +936,140 @@ export const createDoctorsWithDailyAvailability = catchAsync(async (req, res, ne
     message: `Created ${createdDoctors.length} doctors with daily availability`,
     data: {
       doctors: createdDoctors
+    }
+  });
+});
+
+// Get doctors available for a specific date
+export const getAvailableDoctorsForDate = catchAsync(async (req, res, next) => {
+  const { date } = req.query;
+  
+  if (!date) {
+    return next(new AppError('Date parameter is required', 400));
+  }
+
+  // Parse the date using parseLocalDate to avoid timezone conversion
+  const targetDate = parseLocalDate(date);
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const isToday = targetDate.getTime() === today.getTime();
+  
+  console.log(`Fetching doctors available for date: ${date}`);
+  console.log('Target date:', targetDate.toISOString());
+  console.log('Is today:', isToday);
+  
+  // Find schedules for the specific date
+  const schedules = await Schedule.find({
+    date: targetDate,
+    isActive: true
+  }).populate({
+    path: 'doctorId',
+    match: { 
+      userType: 'doctor',
+      isActive: true,
+      verificationStatus: 'verified'
+    },
+    select: '-password'
+  });
+
+  console.log(`Found ${schedules.length} schedules for date ${date}`);
+  
+  // Filter out schedules where doctor population failed
+  const validSchedules = schedules.filter(schedule => schedule.doctorId);
+  
+  console.log(`Found ${validSchedules.length} valid doctor schedules after filtering`);
+  
+  if (isToday) {
+    // For today, also check time-based availability
+    const currentTime = new Date();
+    const currentHour = currentTime.getHours();
+    const currentMinute = currentTime.getMinutes();
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+    
+    const availableNow = validSchedules.filter(schedule => {
+      const startTime = schedule.startTime;
+      const endTime = schedule.endTime;
+      
+      if (!startTime || !endTime) return false;
+      
+      const [startHour, startMinute] = startTime.split(':').map(Number);
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+      const startTotalMinutes = startHour * 60 + startMinute;
+      const endTotalMinutes = endHour * 60 + endMinute;
+      
+      return currentTotalMinutes >= startTotalMinutes && currentTotalMinutes < endTotalMinutes;
+    });
+    
+    console.log(`${availableNow.length} doctors currently available now`);
+  }
+  
+  // Format doctors data
+  const doctorsData = validSchedules.map(schedule => {
+    const doctor = schedule.doctorId;
+    const availability = doctor.availability || {};
+    
+    // Generate time slots based on schedule
+    const generateTimeSlots = (startTime, endTime) => {
+      const slots = [];
+      if (!startTime || !endTime) return slots;
+      
+      const [startHour, startMinute] = startTime.split(':').map(Number);
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+      
+      let currentHour = startHour;
+      let currentMinute = startMinute;
+      
+      while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
+        slots.push(`${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`);
+        currentMinute += 30; // 30-minute slots
+        if (currentMinute >= 60) {
+          currentMinute = 0;
+          currentHour++;
+        }
+      }
+      
+      return slots;
+    };
+    
+    const timeSlots = generateTimeSlots(schedule.startTime, schedule.endTime);
+    
+    return {
+      _id: doctor._id,
+      firstName: doctor.firstName,
+      lastName: doctor.lastName,
+      email: doctor.email,
+      phone: doctor.phone,
+      specialization: doctor.specialization,
+      experience: doctor.experience,
+      consultationFee: doctor.consultationFee,
+      profileImage: doctor.profileImage,
+      scheduleInfo: {
+        date: schedule.date,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        isActive: schedule.isActive,
+        availableSlots: timeSlots,
+        totalSlots: timeSlots.length
+      },
+      availability: availability,
+      isAvailableOnDate: true,
+      workingHoursForDate: schedule.startTime && schedule.endTime ? 
+        `${schedule.startTime} - ${schedule.endTime}` : 'Schedule not defined'
+    };
+  });
+  
+  console.log(`Returning ${doctorsData.length} doctors with availability for ${date}`);
+
+  res.status(200).json({
+    status: 'success',
+    results: doctorsData.length,
+    date: date,
+    isToday: isToday,
+    currentTime: new Date().toISOString(),
+    data: {
+      doctors: doctorsData
     }
   });
 });

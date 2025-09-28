@@ -1,15 +1,29 @@
 import Schedule from '../models/Schedule.js';
 import catchAsync from '../utils/catchAsync.js';
 
+// Helper function to parse date string in local timezone to avoid timezone issues
+const parseLocalDate = (dateString) => {
+  // Expect format: YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return null;
+  }
+  
+  const [year, month, day] = dateString.split('-').map(Number);
+  // Create date in UTC to avoid timezone issues when storing in database
+  const date = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  return date;
+};
+
 // Get today's schedule for the authenticated doctor
 const getTodaySchedule = catchAsync(async (req, res) => {
   const doctorId = req.user.id;
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Start of today
+  // Create today's date in UTC to match how we store dates
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
   
   const schedule = await Schedule.findOne({
     doctorId,
-    date: today
+    date: todayUTC
   });
 
   res.status(200).json({
@@ -65,14 +79,15 @@ const saveTodaySchedule = catchAsync(async (req, res) => {
   }
 
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Start of today
+  // Create today's date in UTC to match how we store dates
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
 
   // Use findOneAndUpdate with upsert to create or update
   const schedule = await Schedule.findOneAndUpdate(
-    { doctorId, date: today },
+    { doctorId, date: todayUTC },
     {
       doctorId,
-      date: today,
+      date: todayUTC,
       startTime,
       endTime,
       isActive: true
@@ -125,11 +140,12 @@ const getScheduleHistory = catchAsync(async (req, res) => {
 const deleteTodaySchedule = catchAsync(async (req, res) => {
   const doctorId = req.user.id;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Create today's date in UTC to match how we store dates
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
 
   const schedule = await Schedule.findOneAndDelete({
     doctorId,
-    date: today
+    date: todayUTC
   });
 
   if (!schedule) {
@@ -149,12 +165,12 @@ const deleteTodaySchedule = catchAsync(async (req, res) => {
 const getUpcomingSchedules = catchAsync(async (req, res) => {
   const doctorId = req.user.id;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
   
   // Get schedules from today onwards
   const schedules = await Schedule.find({
     doctorId,
-    date: { $gte: today }
+    date: { $gte: todayUTC }
   })
   .sort({ date: 1 })
   .populate('doctorId', 'firstName lastName email');
@@ -234,23 +250,22 @@ const saveUpcomingSchedules = catchAsync(async (req, res) => {
         continue;
       }
 
-      // Parse and validate date
-      const scheduleDate = new Date(date);
-      scheduleDate.setHours(0, 0, 0, 0);
+      // Parse and validate date using local timezone
+      const scheduleDate = parseLocalDate(date);
       
-      if (isNaN(scheduleDate.getTime())) {
+      if (!scheduleDate || isNaN(scheduleDate.getTime())) {
         errors.push({
           index: i,
           date,
-          error: 'Invalid date format'
+          error: 'Invalid date format. Expected YYYY-MM-DD'
         });
         continue;
       }
 
       // Check if date is not in the past
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (scheduleDate < today) {
+      const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0));
+      if (scheduleDate < todayUTC) {
         errors.push({
           index: i,
           date,
@@ -335,10 +350,9 @@ const checkScheduleExists = catchAsync(async (req, res) => {
   }
 
   const dateArray = dates.split(',').map(date => {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
+    const d = parseLocalDate(date);
     return d;
-  });
+  }).filter(Boolean); // Remove any null dates
 
   const existingSchedules = await Schedule.find({
     doctorId,
