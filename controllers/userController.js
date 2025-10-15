@@ -6,7 +6,41 @@ import AppError from '../utils/appError.js';
 // Helper function to parse date string to UTC date without timezone conversion
 const parseLocalDate = (dateString) => {
   const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
+  // Set to noon UTC to avoid timezone boundary issues
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+};
+
+// Migration function to update existing schedules to noon UTC format
+const migrateScheduleDates = async () => {
+  try {
+    console.log('Starting schedule date migration...');
+    
+    // Find all schedules with dates at midnight UTC (old format)
+    const schedules = await Schedule.find({
+      $expr: {
+        $and: [
+          { $eq: [{ $hour: "$date" }, 0] },
+          { $eq: [{ $minute: "$date" }, 0] },
+          { $eq: [{ $second: "$date" }, 0] }
+        ]
+      }
+    });
+    
+    console.log(`Found ${schedules.length} schedules to migrate`);
+    
+    for (const schedule of schedules) {
+      const oldDate = schedule.date;
+      const newDate = new Date(oldDate);
+      newDate.setUTCHours(12, 0, 0, 0);
+      
+      await Schedule.findByIdAndUpdate(schedule._id, { date: newDate });
+      console.log(`Migrated schedule ${schedule._id} from ${oldDate.toISOString()} to ${newDate.toISOString()}`);
+    }
+    
+    console.log('Schedule date migration completed');
+  } catch (error) {
+    console.error('Error during schedule date migration:', error);
+  }
 };
 
 export const getAllUsers = catchAsync(async (req, res, next) => {
@@ -960,15 +994,30 @@ export const getAvailableDoctorsForDate = catchAsync(async (req, res, next) => {
   console.log('Target date:', targetDate.toISOString());
   console.log('Is today:', isToday);
   
-  // Find schedules for the specific date
+  // Create date range for the target date to handle both old (midnight) and new (noon) date formats
+  const startOfDay = new Date(targetDate);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(targetDate);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+  
+  console.log('Date range query:', {
+    startOfDay: startOfDay.toISOString(),
+    endOfDay: endOfDay.toISOString()
+  });
+  
+  // Find schedules for the specific date using date range to handle timezone issues
   const schedules = await Schedule.find({
-    date: targetDate,
+    date: {
+      $gte: startOfDay,
+      $lte: endOfDay
+    },
     isActive: true
   }).populate({
     path: 'doctorId',
     match: { 
       userType: 'doctor',
-      isActive: true,
+      // For today, only include active doctors. For future dates, include all doctors
+      ...(isToday ? { isActive: true } : {}),
       verificationStatus: 'verified'
     },
     select: '-password'
@@ -1010,30 +1059,102 @@ export const getAvailableDoctorsForDate = catchAsync(async (req, res, next) => {
     const doctor = schedule.doctorId;
     const availability = doctor.availability || {};
     
-    // Generate time slots based on schedule
-    const generateTimeSlots = (startTime, endTime) => {
-      const slots = [];
-      if (!startTime || !endTime) return slots;
+    // Use the actual available slots from the database
+    const availableSlots = schedule.availableSlots || [];
+    
+    let scheduleStatus = 'available';
+    let slotsWithStatus = [];
+    
+    // For today, add status to each slot based on time and booking status
+    if (isToday) {
+      const currentTime = new Date();
+      const currentHour = currentTime.getHours();
+      const currentMinute = currentTime.getMinutes();
+      const currentTotalMinutes = currentHour * 60 + currentMinute;
       
-      const [startHour, startMinute] = startTime.split(':').map(Number);
-      const [endHour, endMinute] = endTime.split(':').map(Number);
+      console.log(`Current time: ${currentHour}:${currentMinute} (${currentTotalMinutes} minutes)`);
       
-      let currentHour = startHour;
-      let currentMinute = startMinute;
+      // Add status to each slot
+      slotsWithStatus = availableSlots.map(slot => {
+        const [slotHour, slotMinute] = slot.startTime.split(':').map(Number);
+        const slotTotalMinutes = slotHour * 60 + slotMinute;
+        
+        let slotStatus;
+        if (slot.isBooked) {
+          slotStatus = 'booked';
+        } else if (slotTotalMinutes <= currentTotalMinutes) {
+          slotStatus = 'expired';
+        } else {
+          slotStatus = 'available';
+        }
+        
+        return {
+          ...slot,
+          status: slotStatus,
+          timeSlot: `${slot.startTime}-${slot.endTime}`
+        };
+      });
       
-      while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
-        slots.push(`${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`);
-        currentMinute += 30; // 30-minute slots
-        if (currentMinute >= 60) {
-          currentMinute = 0;
-          currentHour++;
+      // Get counts for different slot types
+      const availableCount = slotsWithStatus.filter(slot => slot.status === 'available').length;
+      const expiredCount = slotsWithStatus.filter(slot => slot.status === 'expired').length;
+      const bookedCount = slotsWithStatus.filter(slot => slot.status === 'booked').length;
+      
+      console.log(`Doctor ${doctor.firstName}: Available: ${availableCount}, Expired: ${expiredCount}, Booked: ${bookedCount}`);
+      
+      // Determine overall schedule status
+      if (availableCount === 0) {
+        // Check if the doctor's schedule has ended for today
+        const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
+        const endTotalMinutes = endHour * 60 + endMinute;
+        
+        if (currentTotalMinutes >= endTotalMinutes) {
+          scheduleStatus = 'ended';
+        } else if (expiredCount > 0) {
+          scheduleStatus = 'all_expired';
+        } else {
+          scheduleStatus = 'no_slots';
         }
       }
-      
-      return slots;
-    };
+    } else {
+      // For future dates, all unbooked slots are available
+      slotsWithStatus = availableSlots.map(slot => ({
+        ...slot,
+        status: slot.isBooked ? 'booked' : 'available',
+        timeSlot: `${slot.startTime}-${slot.endTime}`
+      }));
+    }
     
-    const timeSlots = generateTimeSlots(schedule.startTime, schedule.endTime);
+    // Format available time slots - for backward compatibility
+    const availableTimeSlots = slotsWithStatus
+      .filter(slot => slot.status === 'available')
+      .map(slot => slot.timeSlot)
+      .sort();
+    
+    // All time slots with status for display
+    const allTimeSlots = slotsWithStatus
+      .map(slot => slot.timeSlot)
+      .sort();
+    
+    // Calculate slot counts
+    const totalSlots = schedule.totalSlots || availableSlots.length;
+    const availableSlotsCount = slotsWithStatus.filter(slot => slot.status === 'available').length;
+    const bookedSlotsCount = slotsWithStatus.filter(slot => slot.status === 'booked').length;
+    const expiredSlotsCount = slotsWithStatus.filter(slot => slot.status === 'expired').length;
+    
+    // For all_expired status, treat it as ended
+    if (scheduleStatus === 'all_expired') {
+      scheduleStatus = 'ended';
+    }
+    
+    console.log(`Doctor ${doctor.firstName} ${doctor.lastName}:`, {
+      totalSlots,
+      availableSlotsCount,
+      bookedSlotsCount,
+      expiredSlotsCount,
+      scheduleStatus,
+      slotDuration: schedule.slotDuration
+    });
     
     return {
       _id: doctor._id,
@@ -1045,13 +1166,22 @@ export const getAvailableDoctorsForDate = catchAsync(async (req, res, next) => {
       experience: doctor.experience,
       consultationFee: doctor.consultationFee,
       profileImage: doctor.profileImage,
+      isActive: doctor.isActive, // Include doctor's online/offline status
       scheduleInfo: {
         date: schedule.date,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
         isActive: schedule.isActive,
-        availableSlots: timeSlots,
-        totalSlots: timeSlots.length
+        availableSlots: availableTimeSlots, // Only available slots for backward compatibility
+        allTimeSlots: allTimeSlots, // All slots for display
+        slotsWithStatus: slotsWithStatus, // Detailed slot information with status
+        totalSlots: totalSlots,
+        availableSlotsCount: availableSlotsCount,
+        bookedSlotsCount: bookedSlotsCount,
+        expiredSlotsCount: expiredSlotsCount,
+        slotDuration: schedule.slotDuration,
+        scheduleStatus: scheduleStatus,
+        rawSlots: slotsWithStatus // Include all slot data for detailed booking
       },
       availability: availability,
       isAvailableOnDate: true,
@@ -1071,5 +1201,15 @@ export const getAvailableDoctorsForDate = catchAsync(async (req, res, next) => {
     data: {
       doctors: doctorsData
     }
+  });
+});
+
+// Migration endpoint to update schedule dates to noon UTC format
+export const migrateSchedulesToNoonUTC = catchAsync(async (req, res, next) => {
+  await migrateScheduleDates();
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Schedule dates migration completed'
   });
 });

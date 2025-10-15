@@ -7,7 +7,9 @@ import {
   getUpcomingSchedules,
   saveUpcomingSchedules,
   deleteUpcomingSchedule,
-  checkScheduleExists
+  checkScheduleExists,
+  getScheduleSlots,
+  updateSlotStatus
 } from '../controllers/scheduleController.js';
 import { protect, restrictTo } from '../controllers/authController.js';
 
@@ -30,5 +32,9 @@ router.get('/check-exists', checkScheduleExists); // Check if schedules exist fo
 
 // Schedule history
 router.get('/history', getScheduleHistory); // Get schedule history
+
+// Slot management routes
+router.get('/:date/slots', getScheduleSlots); // Get detailed slot information for a specific date
+router.patch('/:scheduleId/slots/:slotNumber', updateSlotStatus); // Update slot status
 
 export default router;

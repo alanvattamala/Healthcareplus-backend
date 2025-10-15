@@ -21,6 +21,7 @@ import {
   createDoctorsWithDailyAvailability,
   updateSchedulesToToday,
   debugSchedules,
+  migrateSchedulesToNoonUTC,
 } from '../controllers/userController.js';
 import { protect, restrictTo } from '../controllers/authController.js';
 
@@ -40,6 +41,7 @@ router.post('/schedules/sample', createSampleSchedules); // For creating test da
 router.post('/doctors/sample', createSampleDoctors); // For creating test doctors
 router.post('/doctors/daily-availability-sample', createDoctorsWithDailyAvailability); // Create doctors with daily availability
 router.patch('/schedules/update-to-today', updateSchedulesToToday); // Update schedules to today's date
+router.post('/schedules/migrate-to-noon', migrateSchedulesToNoonUTC); // Migrate existing schedules to noon UTC
 router.get('/schedules/debug', debugSchedules); // Debug all schedules
 
 // Routes accessible by doctors only
