@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -12,9 +13,12 @@ import adminRoutes from './routes/adminRoutes.js';
 import approvalRoutes from './routes/approvalRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 import globalErrorHandler from './middleware/errorHandler.js';
 import AppError from './utils/appError.js';
 import { startPeriodicCleanup } from './utils/approvalCleanup.js';
+import VideoCallService from './services/videoCallService.js';
 
 // Load environment variables
 dotenv.config();
@@ -84,6 +88,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
@@ -108,11 +114,18 @@ const startServer = async () => {
   
   const PORT = process.env.PORT || 5000;
   
-  const server = app.listen(PORT, () => {
+  // Create HTTP server
+  const server = createServer(app);
+  
+  // Initialize video call service with Socket.io
+  const videoCallService = new VideoCallService(server);
+  
+  server.listen(PORT, () => {
     console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
     console.log(`🌐 Server URL: http://localhost:${PORT}`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
     console.log(`📚 API base URL: http://localhost:${PORT}/api`);
+    console.log(`📞 Socket.io video calling enabled`);
     
     // Start automatic cleanup of processed approval records
     console.log('🧹 Starting automatic approval cleanup service...');
