@@ -15,6 +15,7 @@ import scheduleRoutes from './routes/scheduleRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import symptomAnalysisRoutes from './routes/symptomAnalysisRoutes.js';
 import globalErrorHandler from './middleware/errorHandler.js';
 import AppError from './utils/appError.js';
 import { startPeriodicCleanup } from './utils/approvalCleanup.js';
@@ -90,6 +91,7 @@ app.use('/api/schedules', scheduleRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/symptom-analysis', symptomAnalysisRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res, next) => {
